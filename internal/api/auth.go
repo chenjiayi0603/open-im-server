@@ -15,6 +15,9 @@
 package api
 
 import (
+	"net/http"
+	"net/netip"
+
 	"github.com/gin-gonic/gin"
 	"github.com/openimsdk/protocol/auth"
 	"github.com/openimsdk/tools/a2r"
@@ -26,6 +29,23 @@ type AuthApi struct {
 
 func NewAuthApi(client auth.AuthClient) AuthApi {
 	return AuthApi{client}
+}
+
+// RestrictAdminTokenEndpoint blocks public network requests for admin token minting.
+func RestrictAdminTokenEndpoint() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ip := c.ClientIP()
+		addr, err := netip.ParseAddr(ip)
+		if err != nil || !(addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast()) {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"errCode": http.StatusForbidden,
+				"errMsg":  "forbidden",
+				"errDlt":  "get_admin_token is restricted to internal network",
+			})
+			return
+		}
+		c.Next()
+	}
 }
 
 func (o *AuthApi) GetAdminToken(c *gin.Context) {

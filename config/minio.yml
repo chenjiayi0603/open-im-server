@@ -8,8 +8,9 @@ secretAccessKey: openIM123
 sessionToken: 
 # Internal address of the MinIO server
 internalAddress: localhost:10005
-# External address of the MinIO server, accessible from outside. Supports both HTTP and HTTPS using a domain name
-externalAddress: http://external_ip:10005
+# External address of the MinIO server, accessible from outside. Supports both HTTP and HTTPS using a domain name.
+# 须与客户端浏览器能访问的地址一致；占位 external_ip 会导致发图/文件上传失败。单机可写 127.0.0.1；若前端仅用 WSL 局域网 IP 连 API，可改为 http://<同一IP>:10005
+externalAddress: http://172.24.177.85:10005
 # Flag to enable or disable public read access to the bucket
 publicRead: false
 

@@ -32,11 +32,22 @@ import (
 
 type ThirdApi struct {
 	GrafanaUrl string
-	Client     third.ThirdClient
+	// objectAccessBaseURL: scheme://host:port, no trailing slash; empty means infer from request
+	objectAccessBaseURL string
+	Client              third.ThirdClient
 }
 
-func NewThirdApi(client third.ThirdClient, grafanaUrl string) ThirdApi {
-	return ThirdApi{Client: client, GrafanaUrl: grafanaUrl}
+func NewThirdApi(client third.ThirdClient, grafanaUrl, objectAccessBaseURL string) ThirdApi {
+	base := strings.TrimSpace(objectAccessBaseURL)
+	base = strings.TrimSuffix(base, "/")
+	if base != "" && !strings.Contains(base, "://") {
+		base = "http://" + base
+	}
+	return ThirdApi{
+		Client:              client,
+		GrafanaUrl:          grafanaUrl,
+		objectAccessBaseURL: base,
+	}
 }
 
 func (o *ThirdApi) FcmUpdateToken(c *gin.Context) {
@@ -55,16 +66,15 @@ func setURLPrefixOption[A, B, C any](_ func(client C, ctx context.Context, req *
 	}
 }
 
-func setURLPrefix(c *gin.Context, urlPrefix *string) error {
+func setURLPrefixFromRequest(c *gin.Context, urlPrefix *string) error {
 	host := c.GetHeader("X-Request-Api")
 	if host != "" {
 		if strings.HasSuffix(host, "/") {
 			*urlPrefix = host + "object/"
 			return nil
-		} else {
-			*urlPrefix = host + "/object/"
-			return nil
 		}
+		*urlPrefix = host + "/object/"
+		return nil
 	}
 	u := url.URL{
 		Scheme: "http",
@@ -78,6 +88,22 @@ func setURLPrefix(c *gin.Context, urlPrefix *string) error {
 	return nil
 }
 
+func (o *ThirdApi) setURLPrefix(c *gin.Context, urlPrefix *string) error {
+	if host := c.GetHeader("X-Request-Api"); host != "" {
+		if strings.HasSuffix(host, "/") {
+			*urlPrefix = host + "object/"
+			return nil
+		}
+		*urlPrefix = host + "/object/"
+		return nil
+	}
+	if o.objectAccessBaseURL != "" {
+		*urlPrefix = o.objectAccessBaseURL + "/object/"
+		return nil
+	}
+	return setURLPrefixFromRequest(c, urlPrefix)
+}
+
 func (o *ThirdApi) PartLimit(c *gin.Context) {
 	a2r.Call(c, third.ThirdClient.PartLimit, o.Client)
 }
@@ -88,7 +114,7 @@ func (o *ThirdApi) PartSize(c *gin.Context) {
 
 func (o *ThirdApi) InitiateMultipartUpload(c *gin.Context) {
 	opt := setURLPrefixOption(third.ThirdClient.InitiateMultipartUpload, func(req *third.InitiateMultipartUploadReq) error {
-		return setURLPrefix(c, &req.UrlPrefix)
+		return o.setURLPrefix(c, &req.UrlPrefix)
 	})
 	a2r.Call(c, third.ThirdClient.InitiateMultipartUpload, o.Client, opt)
 }
@@ -99,7 +125,7 @@ func (o *ThirdApi) AuthSign(c *gin.Context) {
 
 func (o *ThirdApi) CompleteMultipartUpload(c *gin.Context) {
 	opt := setURLPrefixOption(third.ThirdClient.CompleteMultipartUpload, func(req *third.CompleteMultipartUploadReq) error {
-		return setURLPrefix(c, &req.UrlPrefix)
+		return o.setURLPrefix(c, &req.UrlPrefix)
 	})
 	a2r.Call(c, third.ThirdClient.CompleteMultipartUpload, o.Client, opt)
 }
@@ -114,7 +140,7 @@ func (o *ThirdApi) InitiateFormData(c *gin.Context) {
 
 func (o *ThirdApi) CompleteFormData(c *gin.Context) {
 	opt := setURLPrefixOption(third.ThirdClient.CompleteFormData, func(req *third.CompleteFormDataReq) error {
-		return setURLPrefix(c, &req.UrlPrefix)
+		return o.setURLPrefix(c, &req.UrlPrefix)
 	})
 	a2r.Call(c, third.ThirdClient.CompleteFormData, o.Client, opt)
 }

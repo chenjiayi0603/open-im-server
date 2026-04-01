@@ -225,7 +225,11 @@ func newGinRouter(ctx context.Context, client discovery.SvcDiscoveryRegistry, cf
 	}
 	// Third service
 	{
-		t := NewThirdApi(third.NewThirdClient(thirdConn), cfg.API.Prometheus.GrafanaURL)
+		t := NewThirdApi(
+			third.NewThirdClient(thirdConn),
+			cfg.API.Prometheus.GrafanaURL,
+			cfg.API.Api.ObjectAccessBaseURL,
+		)
 		thirdGroup := r.Group("/third")
 		thirdGroup.GET("/prometheus", t.GetPrometheus)
 		thirdGroup.POST("/fcm_update_token", t.FcmUpdateToken)

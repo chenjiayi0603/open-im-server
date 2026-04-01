@@ -5,7 +5,8 @@ api:
   ports: [ 10002 ]
   # API compression level; 0: default compression, 1: best compression, 2: best speed, -1: no compression
   compressionLevel: 0
-
+  # 客户端访问本 API 的基地址（无尾斜杠）。用于消息内图片/文件 URL（/object/...）。不填则用请求 Host，易为 127.0.0.1 导致对方裂图。示例：http://192.168.1.10:10002 或局域网 IP（与 MinIO externalAddress 的 host 通常保持一致网段）。
+  objectAccessBaseURL: "http://172.24.177.85:10002"
 
 prometheus:
   # Whether to enable prometheus

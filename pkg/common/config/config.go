@@ -136,6 +136,11 @@ type API struct {
 		ListenIP         string `yaml:"listenIP"`
 		Ports            []int  `yaml:"ports"`
 		CompressionLevel int    `yaml:"compressionLevel"`
+		// ObjectAccessBaseURL is the base URL (scheme://host:port, no trailing slash) that clients
+		// use to reach openim-api for /object/* links in messages. If empty, the prefix is taken from
+		// X-Request-Api header or the incoming HTTP Host (local dev often becomes 127.0.0.1 and breaks
+		// image loading for other devices).
+		ObjectAccessBaseURL string `yaml:"objectAccessBaseURL"`
 	} `yaml:"api"`
 	Prometheus struct {
 		Enable       bool   `yaml:"enable"`

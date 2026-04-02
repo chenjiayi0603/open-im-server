@@ -156,3 +156,114 @@
 
 如果你希望我继续下一页：我可以从 `db.producer.SendMessage(...)` 对应的 Kafka Topic 入手，追到 `openim-msgtransfer`（Kafka consumer）如何把消息落 Mongo/Redis 并触发 `openim-push` 推送。
 
+## 3. openim-msgtransfer：消费 toRedis -> 写 Redis -> 产出 toPush
+
+上一节里，`openim-rpc-msg` 最终调用了：
+- `m.MsgDatabase.MsgToMQ(...)`
+- 进而调用 `producer.SendMessage(ctx, key, data)` 把消息投递到 Kafka（也就是 `config.KafkaConfig.ToRedisTopic` 对应的“下一步链路”）
+
+### 3.1 `openim-msgtransfer` 启动：订阅 toRedis / toMongo
+- 入口：`open-im-server/internal/msgtransfer/init.go: Start`
+- 关键点：
+  - 创建 `historyConsumer := builder.GetTopicConsumer(..., config.KafkaConfig.ToRedisTopic)`
+  - `msgTransfer.historyHandler = NewOnlineHistoryRedisConsumerHandler(...)`
+  - 在 `MsgTransfer.Start()` 中执行：
+    - `m.historyConsumer.Subscribe(m.ctx, m.historyHandler.HandlerRedisMessage)`
+
+### 3.2 `OnlineHistoryRedisConsumerHandler.HandlerRedisMessage`：把消息送进聚合 worker
+- 文件：`open-im-server/internal/msgtransfer/online_history_msg_handler.go`
+- `HandlerRedisMessage(msg mq.Message)`：
+  - 调用 `och.redisMessageBatches.Put(...)`
+  - worker 负责批量聚合、降低对 Redis/DB 的写放大
+
+### 3.3 worker `do()`：分类并“写 Redis + 触发 toPushTopic”
+- 文件：`open-im-server/internal/msgtransfer/online_history_msg_handler.go`
+- `do()` 内主要有这几步：
+  1. `parseConsumerMessages(...)`：`proto.Unmarshal(consumerMessage.Value, sdkws.MsgData)`
+  2. `doSetReadSeq(...)`：如果包含 `HasReadReceipt`，会计算并写入 read seq
+  3. `categorizeMessageLists(...)`：把消息分成“存储类/非存储类、通知类/非通知类”等分组
+  4. `handleMsg(...)` / `handleNotification(...)`
+
+在 `handleMsg(...)` 里可以直接看到“toPushTopic”触发点：
+- `och.toPushTopic(ctx, key, conversationID, notStorageMsgList)`
+- 对 `storageList` 做：
+  - `BatchInsertChat2Cache(...)`（写 Redis / 更新 seq）
+  - `SetHasReadSeqs(...)`
+  - `MsgToMongoMQ(...)`（把消息继续投递到 toMongo）
+- 最后再次触发：
+  - `och.toPushTopic(ctx, key, conversationID, storageList)`
+
+对应 `toPushTopic(...)` 的真正落点：
+- `och.msgTransferDatabase.MsgToPushMQ(...)`
+
+### 3.4 `MsgToPushMQ`：产出到 Kafka `toPushTopic`
+- 文件：`open-im-server/pkg/common/storage/controller/msg_transfer.go`
+- `func (db *msgTransferDatabase) MsgToPushMQ(ctx, key, conversationID, msg2mq)`
+  - `proto.Marshal(&pbmsg.PushMsgDataToMQ{MsgData: msg2mq, ConversationID: conversationID})`
+  - `db.producerToPush.SendMessage(ctx, key, data)`
+
+到这里，消息就从：
+`Kafka(toRedis)` -> `openim-msgtransfer` -> `Kafka(toPush)` 形成了闭环。
+
+## 4. openim-push：消费 toPush -> 调用 openim-msggateway -> websocket 推送
+
+### 4.1 `openim-push` 启动：订阅 toPushTopic
+- 入口：`open-im-server/internal/push/push.go: Start`
+- 关键点：
+  - `pushConsumer := builder.GetTopicConsumer(..., config.KafkaConfig.ToPushTopic)`
+  - `pushHandler := NewConsumerHandler(...)`
+  - `pushConsumer.Subscribe(..., fn)`，fn 内会调用：
+    - `pushHandler.HandleMs2PsChat(authverify.WithTempAdmin(msg.Context()), msg.Value())`
+
+### 4.2 `ConsumerHandler.HandleMs2PsChat`：解析 msg + 计算在线用户
+- 文件：`open-im-server/internal/push/push_handler.go`
+- `HandleMs2PsChat(ctx, msg []byte)`：
+  - `proto.Unmarshal(msg, &pbpush.PushMsgReq{})`
+  - 根据 `SessionType`：
+    - `ReadGroupChatType` -> `Push2Group`
+    - 其他 -> `Push2User`
+
+以 `Push2User` 为例：
+- 会根据 `msg.Options`（例如 `IsSenderSync`）决定 `pushUserIDList`
+- 然后调用：
+  - `wsResults, err := c.GetConnsAndOnlinePush(ctx, msg, userIDs)`
+
+### 4.3 `GetConnsAndOnlinePush`：在线则走 msggateway，失败则做离线推送
+- 文件：`open-im-server/internal/push/push_handler.go`
+- 在线/离线分流：
+  - `onlineUserIDs, offlineUserIDs, err := c.onlineCache.GetUsersOnline(ctx, pushToUserIDs)`
+
+在线推送的核心调用：
+- `result, err = c.onlinePusher.GetConnsAndOnlinePush(ctx, msg, onlineUserIDs)`
+
+在线推送的默认实现（Standalone/ETCD/K8s 之外的情况）在：
+- `open-im-server/internal/push/onlinepusher.go`
+- `DefaultAllNode.GetConnsAndOnlinePush(...)`：
+  - `conns, _ := disCov.GetConns(...RpcService.MessageGateway)`
+  - 对每个 msggateway 连接调用：
+    - `msgClient.SuperGroupOnlineBatchPushOneMsg(ctx, input)`
+  - 其中 `input` 是：
+    - `msggateway.OnlineBatchPushOneMsgReq{MsgData: msg, PushToUserIDs: pushToUserIDs}`
+
+### 4.4 msggateway：`SuperGroupOnlineBatchPushOneMsg` -> `client.PushMessage` -> websocket
+- 文件：`open-im-server/internal/msggateway/hub_server.go`
+- `func (s *Server) SuperGroupOnlineBatchPushOneMsg(ctx, req ...)`：
+  - 对每个 `userID`：
+    - `s.queue.PushCtx(... s.pushToUser(ctx, userID, req.MsgData) ...)`
+
+- `pushToUser(...)` 做在线连接获取并逐个推送：
+  - `clients, ok := s.LongConnServer.GetUserAllCons(userID)`
+  - 对每个 `client` 调用：
+    - `client.PushMessage(ctx, msgData)`
+
+- `client.PushMessage` 在 `open-im-server/internal/msggateway/client.go`：
+  - 构造 `sdkws.PushMessages`
+  - `proto.Marshal(&msg)`
+  - 构造网关返回 `Resp{ReqIdentifier: WSPushMsg, Data: data}`
+  - `c.writeBinaryMsg(resp)` 最终通过 websocket `WriteMessage` 发给前端
+
+到这里，你要的“到 websocket 怎么发”就完整串起来了：
+`Kafka(toPush)` -> `openim-push` -> gRPC `openim-msggateway.SuperGroupOnlineBatchPushOneMsg`
+-> `WsServer/Client.PushMessage` -> `websocket.WriteMessage`
+
+

@@ -237,6 +237,9 @@ func (g *groupServer) CreateGroup(ctx context.Context, req *pbgroup.CreateGroupR
 
 	var groupMembers []*model.GroupMember
 	group := convert.Pb2DBGroupInfo(req.GroupInfo)
+	if group.CreatorUserID == "" {
+		group.CreatorUserID = opUserID
+	}
 	if err := g.GenGroupID(ctx, &group.GroupID); err != nil {
 		return nil, err
 	}

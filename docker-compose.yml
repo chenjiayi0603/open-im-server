@@ -322,6 +322,9 @@ services:
       - GF_SERVER_HTTP_PORT=${GRAFANA_PORT}
     volumes:
       - ${DATA_DIR:-./}/components/grafana:/var/lib/grafana
+      # 自动注册 Prometheus 数据源 + 预置 OpenIM Demo 仪表盘
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/etc/grafana/dashboards:ro
     network_mode: host
 
   node-exporter:

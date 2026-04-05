@@ -16,8 +16,9 @@ prometheus:
   # Prometheus listening ports, must match the number of api.ports
   # It will only take effect when autoSetPorts is set to false.
   ports:
-  # This address can be accessed via a browser
-  grafanaURL:
+  # 管理端 iframe 在「用户浏览器」里打开，须用浏览器能访问到的地址。
+  # WSL2 + Docker host 网络时：不要用 127.0.0.1（Windows 浏览器会连到本机而非 WSL），与 objectAccessBaseURL 同主机即可。
+  grafanaURL: "http://172.24.177.85:13000/"
 
 ratelimiter:
   # Whether to enable rate limiting

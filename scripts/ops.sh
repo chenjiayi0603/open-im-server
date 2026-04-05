@@ -233,6 +233,8 @@ case "$cmd" in
     stop_server
     ;;
   restart)
+    #     cd /home/administrator/openim/open-im-server
+    # OPENIMCONFIG=./config mage stop && OPENIMCONFIG=./config mage start
     stop_server
     start_server
     ;;

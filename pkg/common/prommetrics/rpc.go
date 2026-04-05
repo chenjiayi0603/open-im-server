@@ -48,11 +48,14 @@ func GetGrpcServerMetrics() *gp.ServerMetrics {
 	return grpcMetrics
 }
 
+// 根据不同的registerName，返回对应的prometheus指标收集器
 func GetGrpcCusMetrics(registerName string, discovery *config.Discovery) []prometheus.Collector {
 	switch registerName {
 	case discovery.RpcService.MessageGateway:
+		// 消息网关服务，返回在线用户统计指标
 		return []prometheus.Collector{OnlineUserGauge}
 	case discovery.RpcService.Msg:
+		// 消息服务，返回单聊和群聊消息处理成功/失败统计指标
 		return []prometheus.Collector{
 			SingleChatMsgProcessSuccessCounter,
 			SingleChatMsgProcessFailedCounter,

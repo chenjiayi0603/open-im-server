@@ -1,0 +1,14 @@
+# 与 open-im-server/.env 中 PROMETHEUS_PORT 一致（默认 19091）；若改端口请同步改 url
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    uid: prometheus
+    url: http://127.0.0.1:19091
+    isDefault: true
+    editable: true
+    jsonData:
+      httpMethod: POST
+      timeInterval: 15s

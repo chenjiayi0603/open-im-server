@@ -39,15 +39,20 @@ const (
 	BestSpeed          = 2
 )
 
+// prommetricsGin 返回一个 Gin 中间件，用于收集接口调用的指标数据
 func prommetricsGin() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// 先处理请求
 		c.Next()
+		// 获取当前请求的完整路由路径
 		path := c.FullPath()
+		// 判断响应状态码是否为 404，如果是则使用 "<404>" 作为路径统计
 		if c.Writer.Status() == http.StatusNotFound {
 			prommetrics.HttpCall("<404>", c.Request.Method, c.Writer.Status())
 		} else {
 			prommetrics.HttpCall(path, c.Request.Method, c.Writer.Status())
 		}
+		// 如果有 API 响应对象，则统计 API 指标
 		if resp := apiresp.GetGinApiResponse(c); resp != nil {
 			prommetrics.APICall(path, c.Request.Method, resp.ErrCode)
 		}
@@ -312,20 +317,21 @@ func newGinRouter(ctx context.Context, client discovery.SvcDiscoveryRegistry, cf
 		jssdk.POST("/get_conversations", j.GetConversations)
 		jssdk.POST("/get_active_conversations", j.GetActiveConversations)
 	}
+	// 以下为 Prometheus 服务发现相关路由
 	{
 		pd := NewPrometheusDiscoveryApi(cfg, client)
 		proDiscoveryGroup := r.Group("/prometheus_discovery")
-		proDiscoveryGroup.GET("/api", pd.Api)
-		proDiscoveryGroup.GET("/user", pd.User)
-		proDiscoveryGroup.GET("/group", pd.Group)
-		proDiscoveryGroup.GET("/msg", pd.Msg)
-		proDiscoveryGroup.GET("/friend", pd.Friend)
-		proDiscoveryGroup.GET("/conversation", pd.Conversation)
-		proDiscoveryGroup.GET("/third", pd.Third)
-		proDiscoveryGroup.GET("/auth", pd.Auth)
-		proDiscoveryGroup.GET("/push", pd.Push)
-		proDiscoveryGroup.GET("/msg_gateway", pd.MessageGateway)
-		proDiscoveryGroup.GET("/msg_transfer", pd.MessageTransfer)
+		proDiscoveryGroup.GET("/api", pd.Api)                           // 接口相关指标
+		proDiscoveryGroup.GET("/user", pd.User)                         // 用户相关指标
+		proDiscoveryGroup.GET("/group", pd.Group)                       // 群组相关指标
+		proDiscoveryGroup.GET("/msg", pd.Msg)                           // 消息相关指标
+		proDiscoveryGroup.GET("/friend", pd.Friend)                     // 好友相关指标
+		proDiscoveryGroup.GET("/conversation", pd.Conversation)         // 会话相关指标
+		proDiscoveryGroup.GET("/third", pd.Third)                       // 第三方服务相关指标
+		proDiscoveryGroup.GET("/auth", pd.Auth)                         // 鉴权相关指标
+		proDiscoveryGroup.GET("/push", pd.Push)                         // 推送服务相关指标
+		proDiscoveryGroup.GET("/msg_gateway", pd.MessageGateway)        // 消息网关相关指标
+		proDiscoveryGroup.GET("/msg_transfer", pd.MessageTransfer)      // 消息转发相关指标
 	}
 
 	var etcdClient *clientv3.Client

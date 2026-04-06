@@ -27,6 +27,7 @@ var (
 		Name: "single_chat_msg_process_failed_total",
 		Help: "The number of single chat msg failed processed",
 	})
+	// 群聊消息处理成功计数器
 	GroupChatMsgProcessSuccessCounter = prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "group_chat_msg_process_success_total",
 		Help: "The number of group chat msg successful processed",

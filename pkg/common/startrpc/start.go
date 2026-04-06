@@ -283,7 +283,11 @@ func listenTCP(addr string) (net.Listener, int, error) {
 	return listener, listener.Addr().(*net.TCPAddr).Port, nil
 }
 
+// prommetricsUnaryInterceptor 返回一个 gRPC Unary 拦截器 ServerOption，
+// 用于在每次 gRPC 调用时记录指标。
+// 参数 rpcRegisterName: 用于标识该 gRPC 服务的注册名称。
 func prommetricsUnaryInterceptor(rpcRegisterName string) grpc.ServerOption {
+	// getCode 从 gRPC 响应错误中提取 code，正常时返回 0，无法获取时返回 -1
 	getCode := func(err error) int {
 		if err == nil {
 			return 0
@@ -294,8 +298,10 @@ func prommetricsUnaryInterceptor(rpcRegisterName string) grpc.ServerOption {
 		}
 		return int(rpcErr.GRPCStatus().Code())
 	}
+	// 返回带有 Metric 上报的 Unary 拦截器 ServerOption
 	return grpc.ChainUnaryInterceptor(func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		resp, err := handler(ctx, req)
+		// 调用 prommetrics.RPCCall 上报调用信息，包括服务名、方法名和 code
 		prommetrics.RPCCall(rpcRegisterName, info.FullMethod, getCode(err))
 		return resp, err
 	})

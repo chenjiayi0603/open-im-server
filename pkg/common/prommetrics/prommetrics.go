@@ -99,14 +99,17 @@ type RespTarget struct {
 	Labels  map[string]string `json:"labels"`
 }
 
+// BuildDiscoveryKeyPrefix 构建 Prometheus 服务发现用到的 key 前缀
 func BuildDiscoveryKeyPrefix(name string) string {
 	return fmt.Sprintf("%s/%s/%s", "openim", "prometheus_discovery", name)
 }
 
+// BuildDiscoveryKey 构建 Prometheus 服务发现用到的 key，包含索引
 func BuildDiscoveryKey(name string, index int) string {
 	return fmt.Sprintf("%s/%s/%s/%d", "openim", "prometheus_discovery", name, index)
 }
 
+// BuildDefaultTarget 构建默认的 Target，hostname:ip，带有默认的 namespace label
 func BuildDefaultTarget(host string, ip int) Target {
 	return Target{
 		Target: fmt.Sprintf("%s:%d", host, ip),
